@@ -1,60 +1,129 @@
+#include <WiFi.h>
+#include <WebServer.h>
+
+// Motor Driver Pins
+#define LEFT_MOTOR_FORWARD 18
+#define LEFT_MOTOR_BACKWARD 19
+#define RIGHT_MOTOR_FORWARD 21
+#define RIGHT_MOTOR_BACKWARD 22
+#define WEAPON_MOTOR 23
+
+WebServer server(80);
+
+// Weapon State
+bool weaponState = false;
+
+// HTML for Web Control
+const char html[] = R"rawliteral(
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Combat Bot Bluetooth Control</title>
+    <title>Combat Bot Control</title>
     <style>
-        body { text-align: center; font-family: Arial, sans-serif; }
-        button { font-size: 20px; padding: 10px; margin: 10px; width: 140px; }
-        #connectBtn { background-color: green; color: white; }
-        .controlBtn { background-color: blue; color: white; }
-        .stopBtn { background-color: red; color: white; }
-        .weaponBtn { background-color: orange; color: white; }
+        body { text-align: center; font-family: Arial; user-select: none; } /* Prevent text selection */
+        button { 
+            font-size: 20px; 
+            padding: 10px; 
+            margin: 10px; 
+            width: 120px;
+            user-select: none; /* Prevent button text selection */
+        }
     </style>
 </head>
 <body>
-    <h1>Combat Bot Bluetooth Control</h1>
-    <button id="connectBtn" onclick="connectBluetooth()">Connect Bluetooth</button>
-    <br><br>
-    <button class="controlBtn" onmousedown="sendCommand('Q')" onmouseup="sendCommand('X')">⬅ Forward Left</button>
-    <button class="controlBtn" onmousedown="sendCommand('E')" onmouseup="sendCommand('X')">➡ Forward Right</button>
-    <br>
-    <button class="controlBtn" onmousedown="sendCommand('Z')" onmouseup="sendCommand('X')">⬅ Backward Left</button>
-    <button class="controlBtn" onmousedown="sendCommand('C')" onmouseup="sendCommand('X')">➡ Backward Right</button>
-    <br>
-    <button class="weaponBtn" onclick="sendCommand('W')">⚔ Weapon</button>
-    <button class="stopBtn" onclick="sendCommand('X')">⏹ Stop</button>
+    <h1>Combat Bot Control</h1>
+    <button ontouchstart="sendCommand('right_forward')" ontouchend="sendCommand('stop')" 
+            onmousedown="sendCommand('right_forward')" onmouseup="sendCommand('stop')">⬆ Left</button>
+
+    <button ontouchstart="sendCommand('left_forward')" ontouchend="sendCommand('stop')" 
+            onmousedown="sendCommand('left_forward')" onmouseup="sendCommand('stop')">⬆ Right</button><br>
+
+    <button ontouchstart="sendCommand('right_backward')" ontouchend="sendCommand('stop')" 
+            onmousedown="sendCommand('right_backward')" onmouseup="sendCommand('stop')">⬇ Left</button>
+
+    <button ontouchstart="sendCommand('left_backward')" ontouchend="sendCommand('stop')" 
+            onmousedown="sendCommand('left_backward')" onmouseup="sendCommand('stop')">⬇ Right</button><br>
+
+    <button onclick="sendCommand('weapon_toggle')">⚔ Weapon</button>
 
     <script>
-        let bluetoothDevice;
-        let bluetoothCharacteristic;
-
-        async function connectBluetooth() {
-            try {
-                bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true,
-                    optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'] // Standard Serial UUID
-                });
-
-                const server = await bluetoothDevice.gatt.connect();
-                const service = await server.getPrimaryService('00001101-0000-1000-8000-00805f9b34fb');
-                bluetoothCharacteristic = await service.getCharacteristic('00001101-0000-1000-8000-00805f9b34fb');
-
-                alert("Connected to Bluetooth!");
-            } catch (error) {
-                alert("Bluetooth Connection Failed: " + error);
-            }
+        function sendCommand(cmd) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/" + cmd, true);
+            xhr.send();
         }
-
-        function sendCommand(command) {
-            if (!bluetoothCharacteristic) {
-                alert("Bluetooth not connected!");
-                return;
-            }
-            let commandBuffer = new TextEncoder().encode(command);
-            bluetoothCharacteristic.writeValue(commandBuffer);
-        }
+        document.addEventListener('contextmenu', event => event.preventDefault()); // Disable right-click menu
     </script>
 </body>
 </html>
+)rawliteral";
+
+// Function to stop all motors
+void stopMotors() {
+    digitalWrite(LEFT_MOTOR_FORWARD, LOW);
+    digitalWrite(LEFT_MOTOR_BACKWARD, LOW);
+    digitalWrite(RIGHT_MOTOR_FORWARD, LOW);
+    digitalWrite(RIGHT_MOTOR_BACKWARD, LOW);
+}
+
+// Handle Web Requests
+void handleCommand() {
+    String cmd = server.uri();
+
+    if (cmd == "/right_forward") {
+        stopMotors();
+        digitalWrite(RIGHT_MOTOR_FORWARD, HIGH);
+    } 
+    else if (cmd == "/right_backward") {
+        stopMotors();
+        digitalWrite(RIGHT_MOTOR_BACKWARD, HIGH);
+    }
+    else if (cmd == "/left_forward") {
+        stopMotors();
+        digitalWrite(LEFT_MOTOR_FORWARD, HIGH);
+    }
+    else if (cmd == "/left_backward") {
+        stopMotors();
+        digitalWrite(LEFT_MOTOR_BACKWARD, HIGH);
+    }
+    else if (cmd == "/stop") {
+        stopMotors(); // Stop all motors when the button is released
+    }
+    else if (cmd == "/weapon_toggle") {
+        weaponState = !weaponState;
+        digitalWrite(WEAPON_MOTOR, weaponState ? HIGH : LOW);
+    }
+
+    server.send(200, "text/plain", "OK");
+}
+
+void setup() {
+    Serial.begin(115200);
+
+    // Set motor pins as outputs
+    pinMode(LEFT_MOTOR_FORWARD, OUTPUT);
+    pinMode(LEFT_MOTOR_BACKWARD, OUTPUT);
+    pinMode(RIGHT_MOTOR_FORWARD, OUTPUT);
+    pinMode(RIGHT_MOTOR_BACKWARD, OUTPUT);
+    pinMode(WEAPON_MOTOR, OUTPUT);
+
+    stopMotors();  // Ensure motors start in OFF state
+
+    WiFi.softAP("CombatBot", "12345678");
+    server.on("/", []() { server.send(200, "text/html", html); });
+
+    // Command routes
+    server.on("/right_forward", handleCommand);
+    server.on("/right_backward", handleCommand);
+    server.on("/left_forward", handleCommand);
+    server.on("/left_backward", handleCommand);
+    server.on("/stop", handleCommand); // New stop command
+    server.on("/weapon_toggle", handleCommand);
+
+    server.begin();
+    Serial.println("Web server started!");
+}
+
+void loop() {
+    server.handleClient();
+}
