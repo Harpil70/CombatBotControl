@@ -1,0 +1,155 @@
+#include <WiFi.h>
+    #include <WebServer.h>
+    
+    // Motor Driver Pins
+    #define LEFT_MOTOR_FORWARD 18
+    #define LEFT_MOTOR_BACKWARD 19
+    #define RIGHT_MOTOR_FORWARD 21
+    #define RIGHT_MOTOR_BACKWARD 22
+    #define WEAPON_MOTOR 23
+    
+    WebServer server(80);
+    
+    // Weapon State
+    bool weaponState = false;
+    
+    // HTML for Web Control
+    const char html[] = R"rawliteral(
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Combat Bot Control</title>
+        <style>
+            body { text-align: center; font-family: Arial; user-select: none; }
+            button { 
+                font-size: 20px; 
+                padding: 10px; 
+                margin: 10px; 
+                width: 120px;
+                user-select: none;
+            }
+            .weapon-on { background-color: green; color: white; }
+            .weapon-off { background-color: red; color: white; }
+        </style>
+    </head>
+    <body>
+        <h1>Combat Bot Control</h1>
+        
+        <button ontouchstart="sendCommand('right_forward', 1)" ontouchend="sendCommand('right_forward', 0)"
+                onmousedown="sendCommand('right_forward', 1)" onmouseup="sendCommand('right_forward', 0)">⬆ Left</button>
+    
+        <button ontouchstart="sendCommand('left_forward', 1)" ontouchend="sendCommand('left_forward', 0)"
+                onmousedown="sendCommand('left_forward', 1)" onmouseup="sendCommand('left_forward', 0)">⬆ Right</button><br>
+    
+        <button ontouchstart="sendCommand('right_backward', 1)" ontouchend="sendCommand('right_backward', 0)"
+                onmousedown="sendCommand('right_backward', 1)" onmouseup="sendCommand('right_backward', 0)">⬇ Left</button>
+    
+        <button ontouchstart="sendCommand('left_backward', 1)" ontouchend="sendCommand('left_backward', 0)"
+                onmousedown="sendCommand('left_backward', 1)" onmouseup="sendCommand('left_backward', 0)">⬇ Right</button><br>
+    
+        <button id="weaponBtn" class="weapon-off" onclick="toggleWeapon()">⚔ Weapon</button>
+    
+        <script>
+            function sendCommand(cmd, state) {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", "/" + cmd + "?state=" + state, true);
+                xhr.send();
+            }
+    
+            function toggleWeapon() {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", "/weapon_toggle", true);
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState == 4 && xhr.status == 200) {
+                        var btn = document.getElementById("weaponBtn");
+                        if (xhr.responseText == "ON") {
+                            btn.className = "weapon-on";
+                        } else {
+                            btn.className = "weapon-off";
+                        }
+                    }
+                };
+                xhr.send();
+            }
+    
+            // Load initial weapon state
+            function getWeaponState() {
+                var xhr = new XMLHttpRequest();
+                xhr.open("GET", "/weapon_state", true);
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState == 4 && xhr.status == 200) {
+                        var btn = document.getElementById("weaponBtn");
+                        if (xhr.responseText == "ON") {
+                            btn.className = "weapon-on";
+                        } else {
+                            btn.className = "weapon-off";
+                        }
+                    }
+                };
+                xhr.send();
+            }
+    
+            getWeaponState(); // Call function on page load
+    
+            document.addEventListener('contextmenu', event => event.preventDefault());
+        </script>
+    </body>
+    </html>
+    )rawliteral";
+    
+    // Unified function to handle motor movement
+    void handleMotor() {
+        String cmd = server.uri();
+        String state = server.arg("state");
+    
+        bool isOn = state == "1"; // Convert string to boolean
+    
+        if (cmd == "/right_forward") digitalWrite(RIGHT_MOTOR_FORWARD, isOn ? HIGH : LOW);
+        else if (cmd == "/left_forward") digitalWrite(LEFT_MOTOR_FORWARD, isOn ? HIGH : LOW);
+        else if (cmd == "/right_backward") digitalWrite(RIGHT_MOTOR_BACKWARD, isOn ? HIGH : LOW);
+        else if (cmd == "/left_backward") digitalWrite(LEFT_MOTOR_BACKWARD, isOn ? HIGH : LOW);
+    
+        server.send(200, "text/plain", "OK");
+    }
+    
+    // Handle weapon toggle request
+    void handleWeapon() {
+        weaponState = !weaponState;
+        digitalWrite(WEAPON_MOTOR, weaponState ? HIGH : LOW);
+        server.send(200, "text/plain", weaponState ? "ON" : "OFF");
+    }
+    
+    // Send current weapon state to the client
+    void handleWeaponState() {
+        server.send(200, "text/plain", weaponState ? "ON" : "OFF");
+    }
+    
+    void setup() {
+        Serial.begin(115200);
+    
+        // Set motor pins as outputs
+        pinMode(LEFT_MOTOR_FORWARD, OUTPUT);
+        pinMode(LEFT_MOTOR_BACKWARD, OUTPUT);
+        pinMode(RIGHT_MOTOR_FORWARD, OUTPUT);
+        pinMode(RIGHT_MOTOR_BACKWARD, OUTPUT);
+        pinMode(WEAPON_MOTOR, OUTPUT);
+    
+        WiFi.softAP("CombatBot", "12345678");
+        server.on("/", []() { server.send(200, "text/html", html); });
+    
+        // Command routes
+        server.on("/right_forward", handleMotor);
+        server.on("/left_forward", handleMotor);
+        server.on("/right_backward", handleMotor);
+        server.on("/left_backward", handleMotor);
+        server.on("/weapon_toggle", handleWeapon);
+        server.on("/weapon_state", handleWeaponState); // Added route for initial weapon state
+    
+        server.begin();
+        Serial.println("Web server started!");
+    }
+    
+    void loop() {
+        server.handleClient();
+    }
+    
