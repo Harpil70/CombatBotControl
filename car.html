@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combat Bot Bluetooth Control</title>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; }
+        button { font-size: 20px; padding: 10px; margin: 10px; width: 140px; }
+        #connectBtn { background-color: green; color: white; }
+        .controlBtn { background-color: blue; color: white; }
+        .stopBtn { background-color: red; color: white; }
+        .weaponBtn { background-color: orange; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Combat Bot Bluetooth Control</h1>
+    <button id="connectBtn" onclick="connectBluetooth()">Connect Bluetooth</button>
+    <br><br>
+    <button class="controlBtn" onmousedown="sendCommand('Q')" onmouseup="sendCommand('X')">⬅ Forward Left</button>
+    <button class="controlBtn" onmousedown="sendCommand('E')" onmouseup="sendCommand('X')">➡ Forward Right</button>
+    <br>
+    <button class="controlBtn" onmousedown="sendCommand('Z')" onmouseup="sendCommand('X')">⬅ Backward Left</button>
+    <button class="controlBtn" onmousedown="sendCommand('C')" onmouseup="sendCommand('X')">➡ Backward Right</button>
+    <br>
+    <button class="weaponBtn" onclick="sendCommand('W')">⚔ Weapon</button>
+    <button class="stopBtn" onclick="sendCommand('X')">⏹ Stop</button>
+
+    <script>
+        let bluetoothDevice;
+        let bluetoothCharacteristic;
+
+        async function connectBluetooth() {
+            try {
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'] // Standard Serial UUID
+                });
+
+                const server = await bluetoothDevice.gatt.connect();
+                const service = await server.getPrimaryService('00001101-0000-1000-8000-00805f9b34fb');
+                bluetoothCharacteristic = await service.getCharacteristic('00001101-0000-1000-8000-00805f9b34fb');
+
+                alert("Connected to Bluetooth!");
+            } catch (error) {
+                alert("Bluetooth Connection Failed: " + error);
+            }
+        }
+
+        function sendCommand(command) {
+            if (!bluetoothCharacteristic) {
+                alert("Bluetooth not connected!");
+                return;
+            }
+            let commandBuffer = new TextEncoder().encode(command);
+            bluetoothCharacteristic.writeValue(commandBuffer);
+        }
+    </script>
+</body>
+</html>
